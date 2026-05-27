@@ -1,0 +1,31 @@
+{% extends 'recognition/base.html' %}
+{% block title %}Enrolled Persons{% endblock %}
+{% block content %}
+
+<h1>👥 Enrolled Persons</h1>
+
+{% if not persons %}
+    <div class="card" style="color:#9090b0;">No persons enrolled yet. <a href="{% url 'enroll' %}" style="color:#6ee7b7;">Enroll one now →</a></div>
+{% endif %}
+
+{% for person in persons %}
+<div class="card">
+    <h2>{{ person.name }}</h2>
+    <p style="color:#9090b0; font-size:0.8rem; margin-bottom:1rem;">
+        Enrolled: {{ person.created_at|date:"M d, Y" }} | {{ person.faces.count }} face record(s)
+    </p>
+    <div style="display:flex; flex-wrap:wrap; gap:1rem;">
+        {% for face in person.faces.all %}
+        <div style="text-align:center;">
+            <img src="{{ face.image.url }}" alt="{{ person.name }}"
+                 style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid #3a3a4a; display:block; margin-bottom:0.5rem;">
+            <a href="{% url 'delete_face' face.pk %}"
+               class="btn btn-danger"
+               style="font-size:0.7rem; padding:0.3rem 0.7rem;"
+               onclick="return confirm('Delete this face record?')">Delete</a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

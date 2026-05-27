@@ -1,0 +1,249 @@
+{% extends 'recognition/base.html' %}
+{% block title %}Enroll Face{% endblock %}
+{% block content %}
+
+<h1>📸 Enroll a Face</h1>
+
+<div class="card">
+    <div id="enroll-form-section">
+        <label>Full Name</label>
+        <input type="text" id="enroll-name" placeholder="e.g. John Doe">
+
+        <label style="margin-top:0.8rem;">Choose Input Method</label>
+        <div style="display:flex; gap:0.8rem; margin-bottom:1rem;">
+            <button class="btn btn-secondary" onclick="showUpload('enroll')">📁 Upload Image</button>
+            <button class="btn btn-secondary" onclick="startCamera('enroll')">📷 Use Webcam</button>
+        </div>
+
+        <div id="enroll-upload-section">
+            <input type="file" id="enroll-image-input" accept="image/*">
+        </div>
+
+        <div id="enroll-video-container" style="display:none;">
+            <video id="enroll-video" autoplay playsinline style="width:100%;border-radius:8px;max-height:280px;"></video>
+            <button class="btn btn-secondary" onclick="capturePhoto('enroll')" style="margin-top:0.6rem;">📸 Capture</button>
+            <canvas id="enroll-canvas" style="display:none;"></canvas>
+        </div>
+
+        <div id="enroll-preview-container" style="display:none;margin:1rem 0;">
+            <img id="enroll-preview-img" style="max-width:180px;border-radius:8px;border:2px solid #3a3a4a;">
+        </div>
+
+        <button class="btn btn-primary" onclick="submitEnroll()" style="margin-top:0.5rem;">
+            Enroll Face
+        </button>
+    </div>
+
+    <!-- Progress Section (hidden until submit) -->
+    <div id="enroll-progress-section" style="display:none;">
+        <div style="margin-bottom:1.2rem;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:0.4rem;">
+                <span id="enroll-stage-label" style="color:#9090b0;font-size:0.9rem;">Initializing...</span>
+                <span id="enroll-percent-label" style="color:#6ee7b7;font-weight:700;">0%</span>
+            </div>
+            <div style="background:#0f0f13;border-radius:999px;height:10px;overflow:hidden;border:1px solid #2a2a3a;">
+                <div id="enroll-progress-bar" style="
+                    height:100%;
+                    width:0%;
+                    background:linear-gradient(90deg,#6ee7b7,#34d399);
+                    border-radius:999px;
+                    transition:width 0.5s ease;
+                "></div>
+            </div>
+        </div>
+        <div id="enroll-stages" style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div class="stage-item" id="stage-upload">
+                <span class="stage-icon">⏳</span>
+                <span style="font-size:0.85rem;color:#9090b0;">Uploading image</span>
+            </div>
+            <div class="stage-item" id="stage-detect">
+                <span class="stage-icon">⏳</span>
+                <span style="font-size:0.85rem;color:#9090b0;">Detecting face</span>
+            </div>
+            <div class="stage-item" id="stage-extract">
+                <span class="stage-icon">⏳</span>
+                <span style="font-size:0.85rem;color:#9090b0;">Extracting facial features</span>
+            </div>
+            <div class="stage-item" id="stage-save">
+                <span class="stage-icon">⏳</span>
+                <span style="font-size:0.85rem;color:#9090b0;">Saving to database</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Section (hidden until complete) -->
+    <div id="enroll-result-section" style="display:none; margin-top:1rem;"></div>
+</div>
+
+<style>
+.stage-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    background: #0f0f13;
+    border: 1px solid #2a2a3a;
+    transition: all 0.3s ease;
+}
+.stage-item.active {
+    border-color: #6ee7b7;
+    background: #0a1f18;
+}
+.stage-item.done {
+    border-color: #2a2a3a;
+    opacity: 0.6;
+}
+.stage-icon { font-size: 1rem; min-width: 20px; }
+</style>
+
+<script>
+let enrollFile = null;
+let enrollStream = null;
+
+function showUpload(ctx) {
+    document.getElementById(`${ctx}-video-container`).style.display = 'none';
+    document.getElementById(`${ctx}-upload-section`).style.display = 'block';
+    if (enrollStream) { enrollStream.getTracks().forEach(t => t.stop()); enrollStream = null; }
+}
+
+function startCamera(ctx) {
+    document.getElementById(`${ctx}-upload-section`).style.display = 'none';
+    document.getElementById(`${ctx}-video-container`).style.display = 'block';
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            enrollStream = stream;
+            document.getElementById(`${ctx}-video`).srcObject = stream;
+        })
+        .catch(err => alert('Camera error: ' + err));
+}
+
+function capturePhoto(ctx) {
+    const video  = document.getElementById(`${ctx}-video`);
+    const canvas = document.getElementById(`${ctx}-canvas`);
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+        enrollFile = new File([blob], 'webcam.jpg', { type: 'image/jpeg' });
+        document.getElementById(`${ctx}-preview-img`).src = URL.createObjectURL(blob);
+        document.getElementById(`${ctx}-preview-container`).style.display = 'block';
+        document.getElementById(`${ctx}-video-container`).style.display = 'none';
+        document.getElementById(`${ctx}-upload-section`).style.display = 'block';
+        if (enrollStream) { enrollStream.getTracks().forEach(t => t.stop()); }
+    }, 'image/jpeg', 0.95);
+}
+
+document.getElementById('enroll-image-input').addEventListener('change', function() {
+    if (this.files[0]) {
+        enrollFile = this.files[0];
+        document.getElementById('enroll-preview-img').src = URL.createObjectURL(this.files[0]);
+        document.getElementById('enroll-preview-container').style.display = 'block';
+    }
+});
+
+// Progress helpers
+function setProgress(pct, label) {
+    document.getElementById('enroll-progress-bar').style.width = pct + '%';
+    document.getElementById('enroll-percent-label').textContent = pct + '%';
+    document.getElementById('enroll-stage-label').textContent = label;
+}
+
+function setStage(stageId, status) {
+    const el   = document.getElementById(stageId);
+    const icon = el.querySelector('.stage-icon');
+    el.className = 'stage-item ' + status;
+    icon.textContent = status === 'active' ? '🔄' : status === 'done' ? '✅' : '⏳';
+}
+
+function showEnrollResult(success, message) {
+    const el = document.getElementById('enroll-result-section');
+    el.style.display = 'block';
+    el.innerHTML = success
+        ? `<div style="background:#064e3b;border:1px solid #6ee7b7;color:#6ee7b7;padding:1rem;border-radius:8px;font-size:0.95rem;">
+                ✅ ${message}
+                <br><br>
+                <button class="btn btn-secondary" onclick="resetEnroll()" style="margin-top:0.3rem;">Enroll Another</button>
+           </div>`
+        : `<div style="background:#450a0a;border:1px solid #f87171;color:#f87171;padding:1rem;border-radius:8px;font-size:0.95rem;">
+                ❌ ${message}
+                <br><br>
+                <button class="btn btn-secondary" onclick="resetEnroll()" style="margin-top:0.3rem;">Try Again</button>
+           </div>`;
+}
+
+function resetEnroll() {
+    document.getElementById('enroll-form-section').style.display = 'block';
+    document.getElementById('enroll-progress-section').style.display = 'none';
+    document.getElementById('enroll-result-section').style.display = 'none';
+    document.getElementById('enroll-result-section').innerHTML = '';
+    document.getElementById('enroll-name').value = '';
+    document.getElementById('enroll-image-input').value = '';
+    document.getElementById('enroll-preview-container').style.display = 'none';
+    document.getElementById('enroll-progress-bar').style.width = '0%';
+    enrollFile = null;
+    ['stage-upload','stage-detect','stage-extract','stage-save'].forEach(id => setStage(id, ''));
+}
+
+async function submitEnroll() {
+    const name = document.getElementById('enroll-name').value.trim();
+    const file = enrollFile || document.getElementById('enroll-image-input').files[0];
+
+    if (!name) { alert('Please enter a name.'); return; }
+    if (!file) { alert('Please select or capture an image.'); return; }
+
+    // Switch to progress view
+    document.getElementById('enroll-form-section').style.display = 'none';
+    document.getElementById('enroll-progress-section').style.display = 'block';
+
+    // Stage 1 — Upload
+    setStage('stage-upload', 'active');
+    setProgress(10, 'Uploading image...');
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('image', file);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    // Simulate stage progression while waiting for server
+    await delay(600);
+    setStage('stage-upload', 'done');
+    setStage('stage-detect', 'active');
+    setProgress(30, 'Detecting face...');
+
+    await delay(800);
+    setStage('stage-detect', 'done');
+    setStage('stage-extract', 'active');
+    setProgress(60, 'Extracting facial features...');
+
+    try {
+        const response = await fetch("{% url 'enroll_ajax' %}", {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await response.json();
+
+        setStage('stage-extract', 'done');
+        setStage('stage-save', 'active');
+        setProgress(85, 'Saving to database...');
+        await delay(500);
+
+        setStage('stage-save', 'done');
+        setProgress(100, 'Complete!');
+        await delay(400);
+
+        if (data.success) {
+            showEnrollResult(true, `${data.person} enrolled successfully! (Face ID: ${data.face_id})`);
+        } else {
+            showEnrollResult(false, data.error);
+        }
+
+    } catch (err) {
+        showEnrollResult(false, 'Network error. Please try again.');
+    }
+}
+
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+</script>
+
+{% endblock %}

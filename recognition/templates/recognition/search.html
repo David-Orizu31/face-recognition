@@ -1,0 +1,402 @@
+{% extends 'recognition/base.html' %}
+{% block title %}Search Face{% endblock %}
+{% block content %}
+
+<h1>🔍 Search a Face</h1>
+
+<div class="card">
+    <label>Choose Input Method</label>
+    <div style="display:flex; gap:0.8rem; margin-bottom:1rem;">
+        <button class="btn btn-secondary" onclick="showUploadSearch()">📁 Upload Image</button>
+        <button class="btn btn-secondary" onclick="startCameraSearch()">📷 Use Webcam</button>
+    </div>
+
+    <div id="search-upload-section">
+        <input type="file" id="search-image-input" accept="image/*">
+    </div>
+
+    <div id="search-video-container" style="display:none;">
+        <video id="search-video" autoplay playsinline style="width:100%;border-radius:8px;max-height:280px;"></video>
+        <button class="btn btn-secondary" onclick="captureSearchPhoto()" style="margin-top:0.6rem;">📸 Capture</button>
+        <canvas id="search-canvas" style="display:none;"></canvas>
+    </div>
+
+    <div id="search-preview-container" style="display:none;margin:1rem 0;">
+        <img id="search-preview-img" style="max-width:180px;border-radius:8px;border:2px solid #3a3a4a;">
+    </div>
+
+    <button class="btn btn-primary" onclick="submitSearch()" style="margin-top:0.5rem;">
+        🔍 Search Now
+    </button>
+</div>
+
+<!-- ── Results / Progress Panel (always visible after first search) ── -->
+<div id="search-results-panel" style="display:none; margin-top:1.5rem;">
+
+    <!-- Progress Section -->
+    <div id="search-progress-section" class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+            <span style="font-size:1rem;font-weight:600;color:#f0f0ff;">Processing</span>
+            <span id="search-percent-label" style="color:#6ee7b7;font-weight:700;font-size:1.1rem;">0%</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div style="background:#0f0f13;border-radius:999px;height:10px;overflow:hidden;border:1px solid #2a2a3a;margin-bottom:1.2rem;">
+            <div id="search-progress-bar" style="
+                height:100%;
+                width:0%;
+                background:linear-gradient(90deg,#6ee7b7,#34d399);
+                border-radius:999px;
+                transition:width 0.5s ease;
+            "></div>
+        </div>
+
+        <!-- 4 Stages -->
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div class="stage-item" id="s-stage-upload">
+                <span class="s-icon">⏳</span>
+                <div>
+                    <div style="font-size:0.85rem;color:#e8e8f0;font-weight:500;">Uploading image</div>
+                    <div style="font-size:0.75rem;color:#9090b0;">Sending image to server</div>
+                </div>
+            </div>
+            <div class="stage-item" id="s-stage-detect">
+                <span class="s-icon">⏳</span>
+                <div>
+                    <div style="font-size:0.85rem;color:#e8e8f0;font-weight:500;">Detecting face</div>
+                    <div style="font-size:0.75rem;color:#9090b0;">Locating face in the image</div>
+                </div>
+            </div>
+            <div class="stage-item" id="s-stage-extract">
+                <span class="s-icon">⏳</span>
+                <div>
+                    <div style="font-size:0.85rem;color:#e8e8f0;font-weight:500;">Extracting facial features</div>
+                    <div style="font-size:0.75rem;color:#9090b0;">Generating ArcFace embedding vector</div>
+                </div>
+            </div>
+            <div class="stage-item" id="s-stage-compare">
+                <span class="s-icon">⏳</span>
+                <div>
+                    <div style="font-size:0.85rem;color:#e8e8f0;font-weight:500;">Comparing against database</div>
+                    <div style="font-size:0.75rem;color:#9090b0;">Matching against all enrolled faces</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section (replaces progress content after completion) -->
+    <div id="search-results-section" style="display:none;"></div>
+</div>
+
+<style>
+.stage-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    background: #0f0f13;
+    border: 1px solid #2a2a3a;
+    transition: all 0.35s ease;
+}
+.stage-item.active {
+    border-color: #6ee7b7;
+    background: #0a1f18;
+}
+.stage-item.active .s-icon { animation: spin 1s linear infinite; display:inline-block; }
+.stage-item.done {
+    border-color: #2a2a3a;
+    opacity: 0.55;
+}
+.s-icon {
+    font-size: 1.2rem;
+    min-width: 24px;
+    text-align: center;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.match-card {
+    background: #1a1a24;
+    border: 1px solid #2a2a3a;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    opacity: 0;
+    animation: slideIn 0.4s ease forwards;
+}
+@keyframes slideIn {
+    from { opacity:0; transform:translateY(14px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+</style>
+
+<script>
+let searchFile  = null;
+let searchStream = null;
+
+// ── Input handling ────────────────────────────────────────────────
+
+function showUploadSearch() {
+    document.getElementById('search-video-container').style.display = 'none';
+    document.getElementById('search-upload-section').style.display = 'block';
+    if (searchStream) { searchStream.getTracks().forEach(t => t.stop()); searchStream = null; }
+}
+
+function startCameraSearch() {
+    document.getElementById('search-upload-section').style.display = 'none';
+    document.getElementById('search-video-container').style.display = 'block';
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            searchStream = stream;
+            document.getElementById('search-video').srcObject = stream;
+        })
+        .catch(err => alert('Camera error: ' + err));
+}
+
+function captureSearchPhoto() {
+    const video  = document.getElementById('search-video');
+    const canvas = document.getElementById('search-canvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+        searchFile = new File([blob], 'webcam.jpg', { type: 'image/jpeg' });
+        document.getElementById('search-preview-img').src = URL.createObjectURL(blob);
+        document.getElementById('search-preview-container').style.display = 'block';
+        document.getElementById('search-video-container').style.display = 'none';
+        document.getElementById('search-upload-section').style.display  = 'block';
+        if (searchStream) { searchStream.getTracks().forEach(t => t.stop()); }
+    }, 'image/jpeg', 0.95);
+}
+
+document.getElementById('search-image-input').addEventListener('change', function() {
+    if (this.files[0]) {
+        searchFile = this.files[0];
+        document.getElementById('search-preview-img').src = URL.createObjectURL(this.files[0]);
+        document.getElementById('search-preview-container').style.display = 'block';
+    }
+});
+
+// ── Progress helpers ──────────────────────────────────────────────
+
+function setProgress(pct) {
+    document.getElementById('search-progress-bar').style.width = pct + '%';
+    document.getElementById('search-percent-label').textContent = pct + '%';
+}
+
+function setStage(id, status) {
+    const el   = document.getElementById(id);
+    const icon = el.querySelector('.s-icon');
+    el.className = 'stage-item ' + status;
+    if (status === 'active') icon.textContent = '🔄';
+    else if (status === 'done') icon.textContent = '✅';
+    else icon.textContent = '⏳';
+}
+
+function resetStages() {
+    ['s-stage-upload','s-stage-detect','s-stage-extract','s-stage-compare'].forEach(id => {
+        setStage(id, '');
+    });
+    setProgress(0);
+    document.getElementById('search-percent-label').textContent = '0%';
+}
+
+// ── Render results ────────────────────────────────────────────────
+
+function renderResults(data) {
+    const progressEl = document.getElementById('search-progress-section');
+    const resultsEl  = document.getElementById('search-results-section');
+
+    // Fade out progress, fade in results
+    progressEl.style.transition = 'opacity 0.4s ease';
+    progressEl.style.opacity = '0';
+
+    setTimeout(() => {
+        progressEl.style.display = 'none';
+        resultsEl.style.display  = 'block';
+
+        if (!data.success) {
+            resultsEl.innerHTML = `
+                <div class="card" style="border-color:#f87171;">
+                    <div style="text-align:center;padding:1rem 0;">
+                        <div style="font-size:2rem;margin-bottom:0.5rem;">❌</div>
+                        <div style="color:#f87171;font-size:1rem;font-weight:600;margin-bottom:0.3rem;">
+                            Processing Failed
+                        </div>
+                        <div style="color:#9090b0;font-size:0.85rem;margin-bottom:1.2rem;">${data.error}</div>
+                        <button class="btn btn-secondary" onclick="resetSearch()">Try Again</button>
+                    </div>
+                </div>`;
+            return;
+        }
+
+        if (data.count === 0) {
+            resultsEl.innerHTML = `
+                <div class="card" style="text-align:center;">
+                    <div style="font-size:2.5rem;margin-bottom:0.6rem;">🚫</div>
+                    <div style="color:#f0f0ff;font-size:1.1rem;font-weight:700;margin-bottom:0.4rem;">
+                        No Matching Faces Found
+                    </div>
+                    <div style="color:#9090b0;font-size:0.85rem;margin-bottom:1.3rem;">
+                        This face does not match anyone enrolled in the database.
+                    </div>
+                    <button class="btn btn-secondary" onclick="resetSearch()">Search Again</button>
+                </div>`;
+            return;
+        }
+
+        // Build match cards
+        let html = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+                <h2 style="margin:0;color:#f0f0ff;">
+                    ✅ ${data.count} Match${data.count > 1 ? 'es' : ''} Found
+                </h2>
+                <button class="btn btn-secondary" onclick="resetSearch()">Search Again</button>
+            </div>`;
+
+        data.matches.forEach((match, i) => {
+            const badge = match.confidence >= 90
+                ? { bg:'#064e3b', color:'#6ee7b7', label:'High Confidence' }
+                : match.confidence >= 75
+                ? { bg:'#451a03', color:'#fbbf24', label:'Medium Confidence' }
+                : { bg:'#450a0a', color:'#f87171', label:'Low Confidence'   };
+
+            html += `
+            <div class="match-card" style="animation-delay:${i * 0.12}s;">
+                <img src="${match.image_url}"
+                     style="width:90px;height:90px;object-fit:cover;border-radius:8px;
+                            border:2px solid #6ee7b7;flex-shrink:0;">
+                <div style="flex:1;">
+                    <div style="font-size:1.1rem;font-weight:700;color:#f0f0ff;">
+                        ${match.person_name}
+                    </div>
+                    <div style="color:#6ee7b7;font-size:0.95rem;margin:0.3rem 0;">
+                        Confidence: <strong>${match.confidence}%</strong>
+                    </div>
+                    <div style="color:#9090b0;font-size:0.78rem;">
+                        Distance: ${match.distance} &nbsp;|&nbsp; Face ID: ${match.face_id}
+                    </div>
+                </div>
+                <span style="background:${badge.bg};color:${badge.color};
+                             padding:0.3rem 0.9rem;border-radius:20px;
+                             font-size:0.78rem;font-weight:600;white-space:nowrap;">
+                    ${badge.label}
+                </span>
+            </div>`;
+        });
+
+        resultsEl.innerHTML = html;
+
+        // Scroll results into view smoothly
+        resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    }, 400);
+}
+
+// ── Reset ─────────────────────────────────────────────────────────
+
+function resetSearch() {
+    const progressEl = document.getElementById('search-progress-section');
+    const resultsEl  = document.getElementById('search-results-section');
+    const panelEl    = document.getElementById('search-results-panel');
+
+    resultsEl.style.display   = 'none';
+    resultsEl.innerHTML       = '';
+    progressEl.style.display  = 'block';
+    progressEl.style.opacity  = '1';
+    panelEl.style.display     = 'none';
+
+    document.getElementById('search-image-input').value = '';
+    document.getElementById('search-preview-container').style.display = 'none';
+    searchFile = null;
+    resetStages();
+
+    // Scroll back up to the form
+    document.querySelector('h1').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Main submit ───────────────────────────────────────────────────
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function submitSearch() {
+    const file = searchFile || document.getElementById('search-image-input').files[0];
+    if (!file) { alert('Please select or capture an image first.'); return; }
+
+    // Show the panel and reset state
+    const panelEl    = document.getElementById('search-results-panel');
+    const progressEl = document.getElementById('search-progress-section');
+    const resultsEl  = document.getElementById('search-results-section');
+
+    panelEl.style.display    = 'block';
+    progressEl.style.display = 'block';
+    progressEl.style.opacity = '1';
+    resultsEl.style.display  = 'none';
+    resultsEl.innerHTML      = '';
+    resetStages();
+
+    // Scroll down to progress panel smoothly
+    panelEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // ── Animate stages while waiting for server ──
+
+    // Stage 1 — Upload
+    setStage('s-stage-upload', 'active');
+    setProgress(10);
+    await delay(500);
+
+    // Stage 2 — Detect
+    setStage('s-stage-upload', 'done');
+    setStage('s-stage-detect', 'active');
+    setProgress(30);
+
+    // Fire the actual AJAX request here
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    const fetchPromise = fetch("{% url 'search_ajax' %}", {
+        method: 'POST',
+        body: formData,
+    });
+
+    await delay(700);
+
+    // Stage 3 — Extract
+    setStage('s-stage-detect', 'done');
+    setStage('s-stage-extract', 'active');
+    setProgress(55);
+
+    await delay(800);
+
+    // Stage 4 — Compare
+    setStage('s-stage-extract', 'done');
+    setStage('s-stage-compare', 'active');
+    setProgress(80);
+
+    // Wait for server response
+    try {
+        const response = await fetchPromise;
+        const data     = await response.json();
+
+        setStage('s-stage-compare', 'done');
+        setProgress(100);
+        await delay(500);
+
+        renderResults(data);
+
+    } catch (err) {
+        setStage('s-stage-compare', 'done');
+        setProgress(100);
+        await delay(300);
+        renderResults({ success: false, error: 'Network error. Please try again.' });
+    }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,22 @@
+{
+    "terminal.integrated.env.windows": {
+        "CONDA_DEFAULT_ENV": "faceid"
+    },
+    "terminal.integrated.profiles.windows": {
+        "Git Bash": {
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "args": [
+                "--init-file",
+                "C:/Users/HomePC/anaconda3/etc/profile.d/conda.sh"
+            ]
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "Git Bash",
+    "python-envs.pythonProjects": [
+        {
+            "path": ".",
+            "envManager": "ms-python.python:conda",
+            "packageManager": "ms-python.python:conda"
+        }
+    ]
+}

@@ -1,0 +1,28 @@
+{% extends 'recognition/base.html' %}
+{% block title %}FaceID — Home{% endblock %}
+{% block content %}
+
+<h1>Facial Recognition System</h1>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+    <div class="card" style="text-align:center;">
+        <div style="font-size: 2.5rem; color: #6ee7b7; font-weight: 700;">{{ total_persons }}</div>
+        <div style="color: #9090b0; margin-top: 0.3rem;">Enrolled Persons</div>
+    </div>
+    <div class="card" style="text-align:center;">
+        <div style="font-size: 2.5rem; color: #6ee7b7; font-weight: 700;">{{ total_faces }}</div>
+        <div style="color: #9090b0; margin-top: 0.3rem;">Face Records</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <a href="{% url 'enroll' %}" class="card" style="text-decoration:none; display:block;">
+        <h2>📸 Enroll a Face</h2>
+        <p style="color:#9090b0; font-size:0.9rem;">Register a new person by uploading their photo.</p>
+    </a>
+    <a href="{% url 'search' %}" class="card" style="text-decoration:none; display:block;">
+        <h2>🔍 Search a Face</h2>
+        <p style="color:#9090b0; font-size:0.9rem;">Upload or capture a photo to identify a person.</p>
+    </a>
+</div>
+{% endblock %}
