@@ -3,6 +3,7 @@
 import os
 import sys
 
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 def main():
     """Run administrative tasks."""
